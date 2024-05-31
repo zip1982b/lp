@@ -29,6 +29,7 @@
 #include "stdio.h"
 #endif
 #include "tim.h"
+#include "queue.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -122,10 +123,10 @@ void MX_FREERTOS_Init(void) {
 
   /* Create the semaphores(s) */
   /* creation of WaterAlarmCountingSem */
-  WaterAlarmCountingSemHandle = osSemaphoreNew(2, 0, &WaterAlarmCountingSem_attributes);
+  WaterAlarmCountingSemHandle = osSemaphoreNew(2, 2, &WaterAlarmCountingSem_attributes);
 
   /* creation of TimerDoneCountingSem */
-  TimerDoneCountingSemHandle = osSemaphoreNew(2, 0, &TimerDoneCountingSem_attributes);
+  TimerDoneCountingSemHandle = osSemaphoreNew(2, 2, &TimerDoneCountingSem_attributes);
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
   /* add semaphores, ... */
@@ -137,7 +138,7 @@ void MX_FREERTOS_Init(void) {
 
   /* Create the queue(s) */
   /* creation of commandQueue */
-  commandQueueHandle = osMessageQueueNew (5, sizeof(uint16_t), &commandQueue_attributes);
+  commandQueueHandle = osMessageQueueNew (5, sizeof(uint8_t), &commandQueue_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
@@ -170,6 +171,7 @@ void MX_FREERTOS_Init(void) {
 void StartwaterValveTask(void *argument)
 {
   /* USER CODE BEGIN StartwaterValveTask */
+	portBASE_TYPE xStatus;
 	enum status st = open;
 	enum commands cm = no_command;
 	osStatus_t StatusSemAlarm;
@@ -190,17 +192,35 @@ void StartwaterValveTask(void *argument)
   {
 	  StatusSemAlarm = osSemaphoreAcquire(WaterAlarmCountingSemHandle, 100);
 	  StatusSemT = osSemaphoreAcquire(TimerDoneCountingSemHandle, 100);
-	  osMessageQueueGet(commandQueueHandle, &cm, 0, 200);
+	  //osMessageQueueGet(commandQueueHandle, &cm, 0, 200);
+	  xStatus = xQueueReceive(commandQueueHandle, &cm, 50);
+
+
+#ifdef DEBUG
+	  if( xStatus == pdPASS )
+	  {
+	  /* Операция отправки не завершена, потому что очередь была заполнена -
+	     это должно означать ошибку, так как в нашем случае очередь никогда
+	     не будет содержать больше одного элемента данных! */
+	     printf("Received = %d\n", cm);
+	  }
+#endif
+
 
 	  switch(st){
 	  case s_open:
+#ifdef DEBUG
 		  printf("water valve is open\n");
+#endif
 		  if(StatusSemAlarm == osOK || cm == close){
 			  HAL_GPIO_WritePin(CloseValve_GPIO_Port, CloseValve_Pin, GPIO_PIN_RESET);
 			  st = s_closes;
 			  __HAL_TIM_CLEAR_FLAG(&htim1, TIM_SR_UIF);
 			  HAL_TIM_Base_Start_IT(&htim1);// timer start (in interrupt handle - HAL_GPIO_WritePin(CloseValve_GPIO_Port, CloseValve_Pin, GPIO_PIN_SET))
+#ifdef DEBUG
 			  printf("water alarm!\n");
+#endif
+
 		  }
 		  break;
 	  case s_closes:
@@ -247,6 +267,7 @@ void StartmyCommandTask(void *argument)
 {
   /* USER CODE BEGIN StartmyCommandTask */
 	enum commands cm = no_command;
+	portBASE_TYPE xStatus;
   /* Infinite loop */
   for(;;)
   {
@@ -254,8 +275,14 @@ void StartmyCommandTask(void *argument)
 	osMessageQueuePut(commandQueueHandle, &cm, 0, 200);
     osDelay(20000);
     cm = close;
-    osMessageQueuePut(commandQueueHandle, &cm, 0, 200);
-    osDelay(20000);
+    xStatus = xQueueSendToBack(commandQueueHandle, &cm, 200);
+#ifdef DEBUG
+    printf("xStatus = %ld\n", xStatus);
+#endif
+    //osMessageQueuePut(commandQueueHandle, &cm, 0, 200);
+    //osDelay(20000);
+    vTaskDelay(20000);
+
 
   }
   /* USER CODE END StartmyCommandTask */
@@ -263,30 +290,8 @@ void StartmyCommandTask(void *argument)
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
-	if(GPIO_Pin == GPIO_PIN_5 || GPIO_Pin == GPIO_PIN_6){
-		printf("! - %d\n", GPIO_Pin);
-		osSemaphoreRelease(WaterAlarmCountingSemHandle);
-	}
-}
 
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-  /* USER CODE BEGIN Callback 0 */
 
-  /* USER CODE END Callback 0 */
-  if (htim->Instance == TIM4) {
-    HAL_IncTick();
-  }
-  /* USER CODE BEGIN Callback 1 */
-  if(htim->Instance == TIM1) //check if the interrupt comes from TIM1
-  {
-	  HAL_TIM_Base_Stop_IT(&htim1);
-	  printf("tim1\n");
-	  osSemaphoreRelease(TimerDoneCountingSemHandle);
-      //__HAL_TIM_CLEAR_FLAG(&htim1, TIM_SR_UIF);
-  }
-  /* USER CODE END Callback 1 */
-}
+
 /* USER CODE END Application */
 

@@ -26,7 +26,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "stdio.h"
-#include "FreeRTOS.h"
+#include "glob.h"
+//#include "FreeRTOS.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -161,7 +162,12 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+	if(GPIO_Pin == GPIO_PIN_5 || GPIO_Pin == GPIO_PIN_6){
+		printf("! - %d\n", GPIO_Pin);
+		osSemaphoreRelease(WaterAlarmCountingSemHandle);
+	}
+}
 /* USER CODE END 4 */
 
 /**
@@ -172,7 +178,25 @@ void SystemClock_Config(void)
   * @param  htim : TIM handle
   * @retval None
   */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+	if(htim->Instance == TIM1) //check if the interrupt comes from TIM1
+	{
+		HAL_TIM_Base_Stop_IT(&htim1);
+		printf("tim1\n");
+		osSemaphoreRelease(TimerDoneCountingSemHandle);
+	    //__HAL_TIM_CLEAR_FLAG(&htim1, TIM_SR_UIF);
+	 }
 
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM4) {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+
+  /* USER CODE END Callback 1 */
+}
 
 /**
   * @brief  This function is executed in case of error occurrence.
